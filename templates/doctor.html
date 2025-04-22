@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจ่ายยาออนไลน์ (หมอ)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .container { max-width: 800px; margin: auto; }
+        .btn { padding: 10px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        .btn:hover { background-color: #45a049; }
+        .btn-danger { background-color: #f44336; }
+        .btn-danger:hover { background-color: #e53935; }
+        .med-list, .patient-list { margin-top: 20px; }
+        .med-list select, .patient-list select, input[type="text"] { width: 100%; padding: 10px; margin-bottom: 10px; }
+        .patient-item { margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>ระบบจ่ายยาออนไลน์ (หมอ)</h2>
+        
+        <div class="add-medicine">
+            <h3>เพิ่มชื่อยาใหม่</h3>
+            <input type="text" id="new-medicine" placeholder="กรอกชื่อยาใหม่">
+            <input type="text" id="medicine-id" placeholder="กรอก ID ของยา">
+            <button class="btn" id="add-medicine-btn">เพิ่มยา</button>
+        </div>
+
+        <h3>รายการยา</h3>
+        <div class="med-list">
+            <select id="medicine-select"></select>
+        </div>
+        <button class="btn btn-danger" id="delete-medicine-btn">ลบยา</button>
+
+        <h3>เลือกรายการคนไข้</h3>
+        <div class="patient-list"></div>
+        <button class="btn" id="prescribe-btn">จ่ายยา</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        const socket = io.connect('http://localhost:5000');
+        let patients = [], medicines = [];
+
+        function getMedicines() {
+            axios.get('/get_medicines')
+                .then(res => { medicines = res.data; updateMedicineDropdown(); });
+        }
+
+        function getPatients() {
+            axios.get('/get_patients')
+                .then(res => { patients = res.data; updatePatientList(); });
+        }
+
+        function updateMedicineDropdown() {
+            const select = document.getElementById('medicine-select');
+            select.innerHTML = '';
+            medicines.forEach(m => {
+                const option = document.createElement('option');
+                option.value = m.id;
+                option.textContent = `${m.name} (ID: ${m.id})`;
+                select.appendChild(option);
+            });
+        }
+
+        function updatePatientList() {
+            const list = document.querySelector('.patient-list');
+            list.innerHTML = '';
+            patients.forEach(p => {
+                if (p.status === 'waiting') {
+                    list.innerHTML += `
+                        <div class="patient-item">
+                            <p>ชื่อ: ${p.name}, อายุ: ${p.age}, โรค: ${p.disease}</p>
+                            <button class="btn" onclick="selectPatient('${p.name}')">เลือก</button>
+                        </div>`;
+                }
+            });
+        }
+
+        function selectPatient(name) {
+            const patient = patients.find(p => p.name === name);
+            if (patient) {
+                patient.status = 'selected';
+                socket.emit('updated_patient', patient);
+                alert('คุณเลือกคนไข้: ' + patient.name);
+            }
+        }
+
+        document.getElementById('add-medicine-btn').addEventListener('click', () => {
+            const name = document.getElementById('new-medicine').value.trim();
+            const id = document.getElementById('medicine-id').value.trim();
+
+            if (name && id) {
+                axios.post('/add_medicine', { medicine: name, id: id })
+                    .then(res => {
+                        if (res.data.success) {
+                            alert('เพิ่มยาใหม่สำเร็จ!');
+                            document.getElementById('new-medicine').value = '';
+                            document.getElementById('medicine-id').value = '';
+                            getMedicines();
+                        } else {
+                            alert('ไม่สามารถเพิ่มยาได้: ' + res.data.message);
+                        }
+                    });
+            } else {
+                alert('กรุณากรอกชื่อยาและ ID');
+            }
+        });
+
+        document.getElementById('delete-medicine-btn').addEventListener('click', () => {
+            const id = document.getElementById('medicine-select').value;
+            if (id) {
+                axios.post('/delete_medicine', { id })
+                    .then(res => {
+                        if (res.data.success) {
+                            alert('ลบยาเรียบร้อย');
+                            getMedicines();
+                        } else {
+                            alert('ลบยาไม่สำเร็จ');
+                        }
+                    });
+            } else {
+                alert('กรุณาเลือกยา');
+            }
+        });
+
+        document.getElementById('prescribe-btn').addEventListener('click', () => {
+            const medId = document.getElementById('medicine-select').value;
+            const patient = patients.find(p => p.status === 'selected');
+            if (patient && medId) {
+                const med = medicines.find(m => m.id === medId);
+                axios.post('/prescribe', { name: patient.name, medicine: med.name })
+                    .then(res => { if (res.data.success) alert('จ่ายยาสำเร็จ!'); });
+            } else {
+                alert('กรุณาเลือกคนไข้และยา');
+            }
+        });
+
+        socket.on('new_patient', getPatients);
+        socket.on('updated_patient', getPatients);
+        socket.on('medicine_added', getMedicines);
+        socket.on('medicine_deleted', getMedicines);
+
+        getMedicines();
+        getPatients();
+    </script>
+</body>
+</html>

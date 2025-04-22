@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ฟอร์มการสั่งยา</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>กรอกข้อมูลคนไข้</h1>
+    <form id="form">
+        <input type="text" id="name" placeholder="ชื่อ" required><br>
+        <input type="number" id="age" placeholder="อายุ" required><br>
+        <input type="text" id="disease" placeholder="โรคประจำตัว" required><br>
+        <button type="submit">ส่งข้อมูล</button>
+    </form>
+
+    <div id="status">สถานะการรอยา</div>
+    <div id="qr"></div>
+
+    <script>
+        const socket = io();
+
+        document.getElementById("form").onsubmit = async (e) => {
+            e.preventDefault();
+            const name = document.getElementById("name").value;
+            const age = document.getElementById("age").value;
+            const disease = document.getElementById("disease").value;
+
+            const res = await fetch("/submit_patient", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, age, disease })
+            });
+
+            document.getElementById("status").innerText = "รอหมอสั่งจ่ายยา...";
+        };
+
+        socket.on("updated_patient", data => {
+            const myName = document.getElementById("name").value;
+            if (data.name === myName) {
+                document.getElementById("status").innerText = "หมอสั่งจ่ายยาเรียบร้อย";
+                document.getElementById("qr").innerHTML = `<img src="/static/qr_codes/${data.qr_code}" width="200">`;
+            }
+        });
+    </script>
+</body>
+</html>
